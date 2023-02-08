@@ -1,4 +1,4 @@
-use std::{cmp::max, fmt::Display, fs::File, io::Read, process::exit};
+use std::{cmp::max, fmt::Display, fs::File, io::{Read, Write}, process::exit};
 
 use cod::{InputManager, Key};
 use random::{Source, Value};
@@ -529,7 +529,10 @@ fn main() {
     loop {
         cod::clear();
         cod::home();
-        println!("{board}");
+
+        let mut frame = Vec::new();
+        write!(frame, "{board}").unwrap();
+        println!("{}", String::from_utf8(frame).unwrap());
         cod::bot();
 
         if let Some(key) = input.poll() {
