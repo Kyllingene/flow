@@ -1,15 +1,8 @@
-use std::{fmt::Display, process::exit, fs::File, io::Read};
+use std::{cmp::max, fmt::Display, fs::File, io::Read, process::exit};
 
 use cod::{InputManager, Key};
 use random::{Source, Value};
 use sarge::*;
-
-macro_rules! max {
-    ($x:expr) => ( $x );
-    ($x:expr, $($xs:expr),+) => {
-        std::cmp::max($x, max!( $($xs),+ ))
-    };
-}
 
 type FlowResult<T> = Result<T, FlowError>;
 
@@ -172,7 +165,9 @@ impl Value for Direction {
 
 #[derive(Debug, Clone, Default)]
 struct FlowBoard {
-    cols: [[Tile; 6]; 6],
+    cols: Vec<Vec<Tile>>,
+    size_y: usize,
+    size_x: usize,
 
     cursor_y: usize,
     cursor_x: usize,
@@ -182,12 +177,27 @@ struct FlowBoard {
 }
 
 impl FlowBoard {
-    pub fn new() -> Self {
-        Self::default()
+    pub fn new(x: usize, y: usize) -> Self {
+        let mut row = Vec::with_capacity(x);
+        for _ in 0..x {
+            row.push(Tile::Empty);
+        }
+
+        let mut cols = Vec::with_capacity(y);
+        for _ in 0..y {
+            cols.push(row.clone());
+        }
+
+        Self {
+            size_x: x,
+            size_y: y,
+            cols,
+            ..Default::default()
+        }
     }
 
     pub fn set_source(&mut self, y1: usize, x1: usize, y2: usize, x2: usize) -> FlowResult<()> {
-        if max!(y1, x1, y2, x2) > 5 {
+        if max(y1, y2) > self.size_y || max(x1, x2) > self.size_x {
             return Err(FlowError::InvalidCoords);
         }
 
@@ -208,7 +218,7 @@ impl FlowBoard {
     }
 
     pub fn get_yx(&self, y: usize, x: usize) -> FlowResult<Tile> {
-        if max!(y, x) < 6 {
+        if y < self.size_y && x < self.size_x {
             return Ok(self.cols[y][x]);
         }
 
@@ -248,7 +258,7 @@ impl FlowBoard {
     pub fn move_cursor(&mut self, dir: Direction) -> FlowResult<()> {
         match dir {
             Direction::East => {
-                if self.cursor_x >= 5 {
+                if self.cursor_x >= self.size_x - 1 {
                     return Ok(());
                 }
 
@@ -280,7 +290,7 @@ impl FlowBoard {
                 }
             }
             Direction::South => {
-                if self.cursor_y >= 5 {
+                if self.cursor_y >= self.size_y - 1 {
                     return Ok(());
                 }
 
@@ -381,16 +391,20 @@ impl FlowBoard {
 
 impl Display for FlowBoard {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "+{:-<1$}+", "", self.size_x)?;
         for (y, col) in self.cols.iter().enumerate() {
+            write!(f, "\n |")?;
             for (x, tile) in col.iter().enumerate() {
                 if self.cursor_y == y && self.cursor_x == x {
                     write!(f, "{}{}", tile.colorize('O'), escape("0m"))?;
                 } else {
-                    _ = write!(f, "{tile}");
+                    write!(f, "{tile}")?;
                 }
             }
-            write!(f, "\n ")?;
+            write!(f, "|")?;
         }
+
+        write!(f, "\n +{:-<1$}+", "", self.size_x)?;
 
         Ok(())
     }
@@ -402,11 +416,11 @@ fn from_line(line: String) -> [(usize, usize); 2] {
 
     let coords: Vec<&str> = line.trim().split(' ').collect();
     if coords.len() != 4 {
-        eprintln!("Invalid coordinate line: {}", line);
+        eprintln!("Invalid coordinate line: {line}");
         exit(0);
     }
 
-    a.0 = match coords[0].parse() {
+    a.1 = match coords[0].parse() {
         Ok(i) => i,
         Err(_) => {
             eprintln!("Invalid coordinate: {}", coords[0]);
@@ -414,7 +428,7 @@ fn from_line(line: String) -> [(usize, usize); 2] {
         }
     };
 
-    a.1 = match coords[1].parse() {
+    a.0 = match coords[1].parse() {
         Ok(i) => i,
         Err(_) => {
             eprintln!("Invalid coordinate: {}", coords[0]);
@@ -422,7 +436,7 @@ fn from_line(line: String) -> [(usize, usize); 2] {
         }
     };
 
-    b.0 = match coords[2].parse() {
+    b.1 = match coords[2].parse() {
         Ok(i) => i,
         Err(_) => {
             eprintln!("Invalid coordinate: {}", coords[0]);
@@ -430,7 +444,7 @@ fn from_line(line: String) -> [(usize, usize); 2] {
         }
     };
 
-    b.1 = match coords[3].parse() {
+    b.0 = match coords[3].parse() {
         Ok(i) => i,
         Err(_) => {
             eprintln!("Invalid coordinate: {}", coords[0]);
@@ -441,28 +455,58 @@ fn from_line(line: String) -> [(usize, usize); 2] {
     [a, b]
 }
 
-fn from_file(filename: &String) -> Vec<[(usize, usize); 2]> {
+fn from_file(filename: &String) -> (usize, usize, Vec<[(usize, usize); 2]>) {
     let mut sources = Vec::new();
+    let size_x;
+    let size_y;
 
     if let Ok(mut file) = File::open(filename) {
         let mut data = String::new();
         file.read_to_string(&mut data).unwrap();
 
-        for line in data.lines() {
-            sources.push(from_line(line.to_string()));
+        let mut lines = data.lines();
+        let sizes = lines.next().unwrap_or_else(|| {
+            eprintln!("Invalid level: empty");
+            exit(1);
+        });
+
+        let split = sizes.split(' ').collect::<Vec<&str>>();
+        if split.len() != 2 {
+            eprintln!("Invalid level: invalid size line: {sizes}");
+            exit(1);
         }
 
+        size_x = match split[0].parse() {
+            Ok(i) => i,
+            Err(_) => {
+                eprintln!("Invalid x size: {}", split[0]);
+                exit(0);
+            }
+        };
+
+        size_y = match split[1].parse() {
+            Ok(i) => i,
+            Err(_) => {
+                eprintln!("Invalid x size: {}", split[1]);
+                exit(0);
+            }
+        };
+
+        for line in lines {
+            if !line.is_empty() {
+                sources.push(from_line(line.to_string()));
+            }
+        }
     } else {
         eprintln!("Failed to open level file {filename}");
         exit(0);
     }
 
-    sources
+    (size_x, size_y, sources)
 }
 
 fn main() {
     let mut parser = ArgumentParser::new();
-    let mut board = FlowBoard::new();
     let input = InputManager::new();
 
     let remainder = parser.parse().unwrap();
@@ -473,7 +517,10 @@ fn main() {
 
     let filename = &remainder[0];
 
-    for source in from_file(&filename) {
+    let (size_x, size_y, sources) = from_file(filename);
+    let mut board = FlowBoard::new(size_x, size_y);
+
+    for source in sources {
         board
             .set_source(source[0].0, source[0].1, source[1].0, source[1].1)
             .unwrap();
@@ -504,8 +551,8 @@ fn main() {
             cod::clear();
             cod::home();
             println!("{board}");
-            cod::goto(1, 8);
-            println!("  === VICTORY ===");
+            cod::goto(0, board.size_y as u32 + 2);
+            println!("=== VICTORY ===");
             return;
         }
     }

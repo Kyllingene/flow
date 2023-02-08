@@ -6,13 +6,17 @@
 
 ## Level Syntax
 
-Flow Foo only supports 6x6 boards, and only has 8 colors.
+Flow Foo only has 8 colors.
 
 Each line should describe a pair of sources, like so:
-`y1 x1 y2 x2`
+`x1 y1 x2 y2`
+
+Except for the first line, which defines the board size:
+`x_size y_size`
 
 Example:
 ```
+6 6
 0 5 1 1
 0 4 5 0
 0 3 3 3
