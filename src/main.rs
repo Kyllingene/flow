@@ -267,7 +267,7 @@ impl FlowBoard {
     }
 
     pub fn grab(&mut self) {
-        if self.cols[self.cursor_y][self.cursor_x].is_empty() {
+        if self.get().is_empty() || self.get().is_wall() {
             return;
         }
 
@@ -296,7 +296,7 @@ impl FlowBoard {
     }
 
     pub fn move_cursor(&mut self, dir: Direction) -> FlowResult<()> {
-        if self.get_dir(dir)?.is_wall() {
+        if self.get_dir(dir)?.is_wall() && self.grabbed {
             return Ok(());
         }
         match dir {
@@ -603,11 +603,11 @@ fn main() {
     }
 
     loop {
-        cod::clear();
-        cod::home();
-        
         let mut frame = Vec::new();
         write!(frame, "{board}").unwrap();
+        
+        cod::clear();
+        cod::home();
         println!("{}", String::from_utf8(frame).unwrap());
 
         if let Some(key) = input.poll() {
