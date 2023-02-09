@@ -36,7 +36,6 @@ version = "0.1.0"
 dependencies = [
  "cod",
  "random",
- "sarge",
 ]
 
 [[package]]
@@ -56,12 +55,6 @@ name = "random"
 version = "0.13.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "474c42c904f04dfe2a595a02f71e1a0e5e92ffb5761cc9a4c02140b93b8dd504"
-
-[[package]]
-name = "sarge"
-version = "2.0.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "269a8ce1e1fa61f2a825bc0cd3c02bd791013bc896798a1e32d7329072002074"
 
 [[package]]
 name = "unicode-width"

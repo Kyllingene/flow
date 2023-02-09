@@ -1,8 +1,7 @@
-use std::{cmp::max, fmt::Display, fs::File, io::{Read, Write}, process::exit};
+use std::{cmp::max, fmt::Display, fs::File, io::{Read, Write}, process::exit, env};
 
 use cod::{InputManager, Key};
 use random::{Source, Value};
-use sarge::*;
 
 type FlowResult<T> = Result<T, FlowError>;
 
@@ -440,7 +439,11 @@ impl Display for FlowBoard {
             write!(f, "\n |")?;
             for (x, tile) in col.iter().enumerate() {
                 if self.cursor_y == y && self.cursor_x == x {
-                    write!(f, "{}{}", tile.colorize('O'), escape("0m"))?;
+                    if self.grabbed {
+                        write!(f, "{}{}", tile.colorize('o'), escape("0m"))?;                        
+                    } else {
+                        write!(f, "{}{}", tile.colorize('O'), escape("0m"))?;
+                    }
                 } else {
                     write!(f, "{tile}")?;
                 }
@@ -526,7 +529,7 @@ fn from_file(filename: &String) -> (usize, usize, Vec<Line>) {
     let mut sets = Vec::new();
     let size_x;
     let size_y;
-
+    
     if let Ok(mut file) = File::open(filename) {
         let mut data = String::new();
         file.read_to_string(&mut data).unwrap();
@@ -573,16 +576,15 @@ fn from_file(filename: &String) -> (usize, usize, Vec<Line>) {
 }
 
 fn main() {
-    let mut parser = ArgumentParser::new();
     let input = InputManager::new();
 
-    let remainder = parser.parse().unwrap();
-    if remainder.len() != 1 {
+    let args: Vec<String> = env::args().collect();
+    if args.len() != 2 {
         eprintln!("Must give a level to play");
         return;
     }
 
-    let filename = &remainder[0];
+    let filename = &args[1];
 
     let (size_x, size_y, sources) = from_file(filename);
     let mut board = FlowBoard::new(size_x, size_y);
@@ -627,8 +629,8 @@ fn main() {
             cod::clear();
             cod::home();
             println!("{board}");
-            cod::goto(0, board.size_y as u32 + 2);
-            println!("=== VICTORY ===");
+            cod::goto(0, board.size_y as u32 + 3);
+            println!("=== SOLVED ===");
             return;
         }
     }
