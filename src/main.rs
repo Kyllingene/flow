@@ -19,7 +19,7 @@ impl Display for FlowError {
             Self::InvalidCoords => write!(f, "Invalid coordinates"),
             Self::EmptyTile => write!(f, "Can't drag empty square"),
             Self::NoMoreColors => write!(f, "No more available colors"),
-            Self::TileNotEmpty => write!(f, "Tile is alreadx taken"),
+            Self::TileNotEmpty => write!(f, "Tile is already taken"),
         }
     }
 }
@@ -575,6 +575,7 @@ fn from_file(filename: &String) -> (usize, usize, Vec<Line>) {
     (size_x, size_y, sets)
 }
 
+// TODO: investigate windows flickering
 fn main() {
     let input = InputManager::new();
 
@@ -604,11 +605,10 @@ fn main() {
     loop {
         cod::clear();
         cod::home();
-
+        
         let mut frame = Vec::new();
         write!(frame, "{board}").unwrap();
         println!("{}", String::from_utf8(frame).unwrap());
-        cod::bot();
 
         if let Some(key) = input.poll() {
             match key {
@@ -627,7 +627,6 @@ fn main() {
 
         if board.is_solved().unwrap() {
             cod::clear();
-            cod::home();
             println!("{board}");
             cod::goto(0, board.size_y as u32 + 3);
             println!("=== SOLVED ===");
