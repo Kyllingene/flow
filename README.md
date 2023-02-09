@@ -10,6 +10,8 @@ Flow Foo only has 8 colors.
 
 Each line should describe a pair of sources, like so:
 `x1 y1 x2 y2`
+Or a wall, like so:
+`x y`
 
 Except for the first line, which defines the board size:
 `x_size y_size`
@@ -17,19 +19,29 @@ Except for the first line, which defines the board size:
 Example:
 ```
 6 6
-0 5 1 1
-0 4 5 0
-0 3 3 3
+
+0 0 0 5
+5 0 2 3
+1 4 5 5
+3 4 5 4
+5 1 3 3
+3 1 4 2
+
+2 1
+2 2
+3 2
+2 5
+
 ```
 
 Creates the board:
 ```
-...CBA
-.A....
-......
-...C..
-......
-B.....
+A....B
+..&F.E
+..&F.
+..BE..
+.C&D.D
+A....C
 ```
 
 "Invalid" levels, i.e. ones you can solve without filling the board, or that have multiple solutions, are legal. When a flow touches both of it's sources, it is considered complete, but can continue going.

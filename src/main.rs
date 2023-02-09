@@ -77,33 +77,38 @@ impl Color {
 enum Tile {
     #[default]
     Empty,
+    Wall,
     Source(Color),
     Flow(Color),
 }
 
 impl Tile {
-    pub fn is_empty(self) -> bool {
-        self == Tile::Empty
+    pub const fn is_empty(self) -> bool {
+        matches!(self, Tile::Empty)
     }
 
-    pub fn is_source(self) -> bool {
+    pub const fn is_source(self) -> bool {
         matches!(self, Tile::Source(_))
     }
 
-    pub fn is_flow(self) -> bool {
+    pub const fn is_wall(self) -> bool {
+        matches!(self, Tile::Wall)
+    }
+
+    pub const fn is_flow(self) -> bool {
         matches!(self, Tile::Flow(_))
     }
 
-    pub fn color(self) -> Option<Color> {
+    pub const fn color(self) -> Option<Color> {
         match self {
             Tile::Flow(c) | Tile::Source(c) => Some(c),
-            Tile::Empty => None,
+            Tile::Empty | Tile::Wall => None,
         }
     }
 
     pub fn colorize(&self, ch: char) -> String {
         match self {
-            Tile::Empty => ch.to_string(),
+            Tile::Empty | Tile::Wall => ch.to_string(),
             Tile::Source(color) | Tile::Flow(color) => color.colorize(ch),
         }
     }
@@ -115,7 +120,8 @@ impl Display for Tile {
             f,
             "{}{}",
             match self {
-                Self::Empty => "#".to_string(),
+                Self::Empty => " ".to_string(),
+                Self::Wall => escape(format!("38;5;{}m&", 8)),
                 Self::Source(color) => color.colorize('%'),
                 Self::Flow(color) => color.colorize('*'),
             },
@@ -217,6 +223,20 @@ impl FlowBoard {
         Ok(())
     }
 
+    pub fn set_wall(&mut self, y: usize, x: usize) -> FlowResult<()> {
+        if y > self.size_y || x > self.size_x {
+            return Err(FlowError::InvalidCoords);
+        }
+
+        if self.cols[y][x].is_empty() {
+            self.cols[y][x] = Tile::Wall;
+        } else {
+            return Err(FlowError::TileNotEmpty);
+        }
+
+        Ok(())
+    }
+
     pub fn get_yx(&self, y: usize, x: usize) -> FlowResult<Tile> {
         if y < self.size_y && x < self.size_x {
             return Ok(self.cols[y][x]);
@@ -255,7 +275,31 @@ impl FlowBoard {
         self.grabbed = !self.grabbed;
     }
 
+    pub fn get_dir(&self, dir: Direction) -> FlowResult<Tile> {
+        match dir {
+            Direction::East => self.get_yx(self.cursor_y, self.cursor_x + 1),
+            Direction::West => {
+                if self.cursor_x == 0 {
+                    Err(FlowError::InvalidCoords)
+                } else {
+                    self.get_yx(self.cursor_y, self.cursor_x - 1)
+                }
+            }
+            Direction::South => self.get_yx(self.cursor_y + 1, self.cursor_x),
+            Direction::North => {
+                if self.cursor_y == 0 {
+                    Err(FlowError::InvalidCoords)
+                } else {
+                    self.get_yx(self.cursor_y - 1, self.cursor_x)
+                }
+            }
+        }
+    }
+
     pub fn move_cursor(&mut self, dir: Direction) -> FlowResult<()> {
+        if self.get_dir(dir)?.is_wall() {
+            return Ok(());
+        }
         match dir {
             Direction::East => {
                 if self.cursor_x >= self.size_x - 1 {
@@ -267,7 +311,7 @@ impl FlowBoard {
                     let col = match self.get_yx(self.cursor_y, self.cursor_x - 1)? {
                         Tile::Flow(c) => c,
                         Tile::Source(c) => c,
-                        Tile::Empty => return Err(FlowError::EmptyTile),
+                        Tile::Empty | Tile::Wall => return Err(FlowError::EmptyTile),
                     };
 
                     self.set(col)?;
@@ -283,7 +327,7 @@ impl FlowBoard {
                     let col = match self.get_yx(self.cursor_y, self.cursor_x + 1)? {
                         Tile::Flow(c) => c,
                         Tile::Source(c) => c,
-                        Tile::Empty => return Err(FlowError::EmptyTile),
+                        Tile::Empty | Tile::Wall => return Err(FlowError::EmptyTile),
                     };
 
                     self.set(col)?;
@@ -299,7 +343,7 @@ impl FlowBoard {
                     let col = match self.get_yx(self.cursor_y - 1, self.cursor_x)? {
                         Tile::Flow(c) => c,
                         Tile::Source(c) => c,
-                        Tile::Empty => return Err(FlowError::EmptyTile),
+                        Tile::Empty | Tile::Wall => return Err(FlowError::EmptyTile),
                     };
 
                     self.set(col)?;
@@ -315,7 +359,7 @@ impl FlowBoard {
                     let col = match self.get_yx(self.cursor_y + 1, self.cursor_x)? {
                         Tile::Flow(c) => c,
                         Tile::Source(c) => c,
-                        Tile::Empty => return Err(FlowError::EmptyTile),
+                        Tile::Empty | Tile::Wall => return Err(FlowError::EmptyTile),
                     };
 
                     self.set(col)?;
@@ -330,7 +374,7 @@ impl FlowBoard {
         let color = match self.get_yx(y, x)? {
             Tile::Flow(c) => c,
             Tile::Source(c) => c,
-            Tile::Empty => return Err(FlowError::EmptyTile),
+            Tile::Empty | Tile::Wall=> return Err(FlowError::EmptyTile),
         };
 
         let mut check = Vec::new();
@@ -410,53 +454,76 @@ impl Display for FlowBoard {
     }
 }
 
-fn from_line(line: String) -> [(usize, usize); 2] {
+enum Line {
+    Source([(usize, usize); 2]),
+    Wall((usize, usize)),
+}
+
+fn from_line(line: String) -> Line {
     let mut a = (0, 0);
     let mut b = (0, 0);
 
     let coords: Vec<&str> = line.trim().split(' ').collect();
-    if coords.len() != 4 {
+    if coords.len() == 4 {
+        a.1 = match coords[0].parse() {
+            Ok(i) => i,
+            Err(_) => {
+                eprintln!("Invalid coordinate: {}", coords[0]);
+                exit(0);
+            }
+        };
+
+        a.0 = match coords[1].parse() {
+            Ok(i) => i,
+            Err(_) => {
+                eprintln!("Invalid coordinate: {}", coords[0]);
+                exit(0);
+            }
+        };
+
+        b.1 = match coords[2].parse() {
+            Ok(i) => i,
+            Err(_) => {
+                eprintln!("Invalid coordinate: {}", coords[0]);
+                exit(0);
+            }
+        };
+
+        b.0 = match coords[3].parse() {
+            Ok(i) => i,
+            Err(_) => {
+                eprintln!("Invalid coordinate: {}", coords[0]);
+                exit(0);
+            }
+        };
+
+        Line::Source([a, b])
+    } else if coords.len() == 2 {
+        a.1 = match coords[0].parse() {
+            Ok(i) => i,
+            Err(_) => {
+                eprintln!("Invalid coordinate: {}", coords[0]);
+                exit(0);
+            }
+        };
+
+        a.0 = match coords[1].parse() {
+            Ok(i) => i,
+            Err(_) => {
+                eprintln!("Invalid coordinate: {}", coords[0]);
+                exit(0);
+            }
+        };
+
+        Line::Wall(a)
+    } else {
         eprintln!("Invalid coordinate line: {line}");
         exit(0);
     }
-
-    a.1 = match coords[0].parse() {
-        Ok(i) => i,
-        Err(_) => {
-            eprintln!("Invalid coordinate: {}", coords[0]);
-            exit(0);
-        }
-    };
-
-    a.0 = match coords[1].parse() {
-        Ok(i) => i,
-        Err(_) => {
-            eprintln!("Invalid coordinate: {}", coords[0]);
-            exit(0);
-        }
-    };
-
-    b.1 = match coords[2].parse() {
-        Ok(i) => i,
-        Err(_) => {
-            eprintln!("Invalid coordinate: {}", coords[0]);
-            exit(0);
-        }
-    };
-
-    b.0 = match coords[3].parse() {
-        Ok(i) => i,
-        Err(_) => {
-            eprintln!("Invalid coordinate: {}", coords[0]);
-            exit(0);
-        }
-    };
-
-    [a, b]
 }
 
-fn from_file(filename: &String) -> (usize, usize, Vec<[(usize, usize); 2]>) {
-    let mut sources = Vec::new();
+fn from_file(filename: &String) -> (usize, usize, Vec<Line>) {
+    let mut sets = Vec::new();
     let size_x;
     let size_y;
 
@@ -494,7 +561,7 @@ fn from_file(filename: &String) -> (usize, usize, Vec<[(usize, usize); 2]>) {
 
         for line in lines {
             if !line.is_empty() {
-                sources.push(from_line(line.to_string()));
+                sets.push(from_line(line.to_string()));
             }
         }
     } else {
@@ -502,7 +569,7 @@ fn from_file(filename: &String) -> (usize, usize, Vec<[(usize, usize); 2]>) {
         exit(0);
     }
 
-    (size_x, size_y, sources)
+    (size_x, size_y, sets)
 }
 
 fn main() {
@@ -520,10 +587,16 @@ fn main() {
     let (size_x, size_y, sources) = from_file(filename);
     let mut board = FlowBoard::new(size_x, size_y);
 
-    for source in sources {
-        board
-            .set_source(source[0].0, source[0].1, source[1].0, source[1].1)
-            .unwrap();
+    for line in sources {
+        if let Line::Source(source) = line {
+            board
+                .set_source(source[0].0, source[0].1, source[1].0, source[1].1)
+                .unwrap();
+        } else if let Line::Wall(wall) = line {
+            board
+                .set_wall(wall.0, wall.1)
+                .unwrap();
+        }
     }
 
     loop {
